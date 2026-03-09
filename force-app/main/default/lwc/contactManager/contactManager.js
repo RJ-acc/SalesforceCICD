@@ -1,17 +1,17 @@
-import { LightningElement, wire, track } from 'lwc';
-import getContacts from '@salesforce/apex/ContactManager.getContacts';
+import { LightningElement, wire } from 'lwc';
 import createContact from '@salesforce/apex/ContactManager.createContact';
 import deleteContact from '@salesforce/apex/ContactManager.deleteContact';
+import getContacts from '@salesforce/apex/ContactManager.getContacts';
 import { refreshApex } from '@salesforce/apex';
 
 export default class ContactManager extends LightningElement {
-    @track contacts = [];
-    @track error;
-    @track firstName = '';
-    @track lastName = '';
-    @track email = '';
-    @track phone = '';
-    @track showForm = false;
+    contacts = [];
+    error;
+    firstName = '';
+    lastName = '';
+    email = '';
+    phone = '';
+    showForm = false;
 
     wiredContactsResult;
 
@@ -20,7 +20,7 @@ export default class ContactManager extends LightningElement {
         this.wiredContactsResult = result;
         if (result.data) {
             this.contacts = result.data;
-            this.error = undefined;
+            this.error = null;
         } else if (result.error) {
             this.error = result.error.body.message;
             this.contacts = [];
@@ -28,11 +28,20 @@ export default class ContactManager extends LightningElement {
     }
 
     handleInputChange(event) {
-        const field = event.target.dataset.field;
-        if (field === 'firstName') this.firstName = event.target.value;
-        if (field === 'lastName') this.lastName = event.target.value;
-        if (field === 'email') this.email = event.target.value;
-        if (field === 'phone') this.phone = event.target.value;
+        const { field } = event.target.dataset,
+            { value } = event.target;
+        if (field === 'firstName') {
+            this.firstName = value;
+        }
+        if (field === 'lastName') {
+            this.lastName = value;
+        }
+        if (field === 'email') {
+            this.email = value;
+        }
+        if (field === 'phone') {
+            this.phone = value;
+        }
     }
 
     toggleForm() {
@@ -40,7 +49,12 @@ export default class ContactManager extends LightningElement {
     }
 
     handleCreate() {
-        createContact({ firstName: this.firstName, lastName: this.lastName, email: this.email, phone: this.phone })
+        createContact({
+            email: this.email,
+            firstName: this.firstName,
+            lastName: this.lastName,
+            phone: this.phone
+        })
             .then(() => {
                 this.firstName = '';
                 this.lastName = '';
@@ -49,19 +63,18 @@ export default class ContactManager extends LightningElement {
                 this.showForm = false;
                 return refreshApex(this.wiredContactsResult);
             })
-            .catch(error => {
-                this.error = error.body.message;
+            .catch((error) => {
+                this.error = error?.body?.message || 'Unable to create contact';
             });
     }
 
     handleDelete(event) {
         const contactId = event.target.dataset.id;
-        deleteContact({ contactId: contactId })
-            .then(() => {
-                return refreshApex(this.wiredContactsResult);
-            })
-            .catch(error => {
-                this.error = error.body.message;
+
+        deleteContact({ contactId })
+            .then(() => refreshApex(this.wiredContactsResult))
+            .catch((error) => {
+                this.error = error?.body?.message || 'Unable to delete contact';
             });
     }
 }

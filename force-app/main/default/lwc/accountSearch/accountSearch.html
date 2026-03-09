@@ -1,0 +1,15 @@
+<template>
+    <lightning-card title="Account Search" icon-name="standard:search">
+        <div class="slds-p-around_medium">
+            <div class="slds-grid slds-gutters">
+                <div class="slds-col slds-size_3-of-4"><lightning-input label="Search" placeholder="Account name..." value={searchKey} onchange={handleSearchChange} onkeyup={handleKeyUp}></lightning-input></div>
+                <div class="slds-col slds-size_1-of-4 slds-grid slds-grid_vertical-align-end"><lightning-button label="Search" variant="brand" onclick={handleSearch}></lightning-button></div>
+            </div>
+            <template if:true={error}><p class="slds-m-top_medium slds-text-color_error">{error}</p></template>
+            <template if:true={hasResults}>
+                <table class="slds-table slds-table_bordered slds-m-top_medium"><thead><tr><th>Name</th><th>Industry</th><th>Phone</th></tr></thead>
+                <tbody><template for:each={accounts} for:item="acc"><tr key={acc.Id}><td>{acc.Name}</td><td>{acc.Industry}</td><td>{acc.Phone}</td></tr></template></tbody></table>
+            </template>
+        </div>
+    </lightning-card>
+</template>
