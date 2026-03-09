@@ -1,7 +1,7 @@
 import { LightningElement, wire } from 'lwc';
-import getContacts from '@salesforce/apex/ContactManager.getContacts';
 import createContact from '@salesforce/apex/ContactManager.createContact';
 import deleteContact from '@salesforce/apex/ContactManager.deleteContact';
+import getContacts from '@salesforce/apex/ContactManager.getContacts';
 import { refreshApex } from '@salesforce/apex';
 
 export default class ContactManager extends LightningElement {
@@ -20,7 +20,7 @@ export default class ContactManager extends LightningElement {
         this.wiredContactsResult = result;
         if (result.data) {
             this.contacts = result.data;
-            this.error = undefined;
+            this.error = null;
         } else if (result.error) {
             this.error = result.error.body.message;
             this.contacts = [];
@@ -28,18 +28,19 @@ export default class ContactManager extends LightningElement {
     }
 
     handleInputChange(event) {
-        const field = event.target.dataset.field;
+        const { field } = event.target.dataset;
+        const { value } = event.target;
         if (field === 'firstName') {
-            this.firstName = event.target.value;
+            this.firstName = value;
         }
         if (field === 'lastName') {
-            this.lastName = event.target.value;
+            this.lastName = value;
         }
         if (field === 'email') {
-            this.email = event.target.value;
+            this.email = value;
         }
         if (field === 'phone') {
-            this.phone = event.target.value;
+            this.phone = value;
         }
     }
 
@@ -49,9 +50,9 @@ export default class ContactManager extends LightningElement {
 
     handleCreate() {
         createContact({
+            email: this.email,
             firstName: this.firstName,
             lastName: this.lastName,
-            email: this.email,
             phone: this.phone
         })
             .then(() => {
@@ -71,9 +72,7 @@ export default class ContactManager extends LightningElement {
         const contactId = event.target.dataset.id;
 
         deleteContact({ contactId })
-            .then(() => {
-                return refreshApex(this.wiredContactsResult);
-            })
+            .then(() => refreshApex(this.wiredContactsResult))
             .catch((error) => {
                 this.error = error?.body?.message || 'Unable to delete contact';
             });

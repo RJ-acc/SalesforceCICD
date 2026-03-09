@@ -1,6 +1,8 @@
 import { LightningElement, wire } from 'lwc';
 import getSalesDashboardData from '@salesforce/apex/ReportGenerator.getSalesDashboardData';
 
+const ZERO = 0;
+
 export default class SalesDashboard extends LightningElement {
     dashboardData = {};
     error;
@@ -12,39 +14,39 @@ export default class SalesDashboard extends LightningElement {
 
         if (data) {
             this.dashboardData = data;
-            this.error = undefined;
+            this.error = null;
         } else if (error) {
             this.error = error?.body?.message || 'Unable to load dashboard data';
         }
     }
 
     get totalAccounts() {
-        return this.dashboardData.totalAccounts || 0;
+        return this.dashboardData.totalAccounts || ZERO;
     }
 
     get totalContacts() {
-        return this.dashboardData.totalContacts || 0;
+        return this.dashboardData.totalContacts || ZERO;
     }
 
     get totalOpportunities() {
-        return this.dashboardData.totalOpportunities || 0;
+        return this.dashboardData.totalOpportunities || ZERO;
     }
 
     get openCases() {
-        return this.dashboardData.openCases || 0;
+        return this.dashboardData.openCases || ZERO;
     }
 
     get pipelineValue() {
         return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD'
-        }).format(this.dashboardData.pipelineValue || 0);
+            currency: 'USD',
+            style: 'currency'
+        }).format(this.dashboardData.pipelineValue || ZERO);
     }
 
     get closedWonValue() {
         return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD'
-        }).format(this.dashboardData.closedWonValue || 0);
+            currency: 'USD',
+            style: 'currency'
+        }).format(this.dashboardData.closedWonValue || ZERO);
     }
 }
