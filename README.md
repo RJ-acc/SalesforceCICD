@@ -1,19 +1,47 @@
-# Salesforce DX Project: Next Steps
+# Salesforce CICD Sample (Production-Style Additions)
 
-Now that you’ve created a Salesforce DX project, what’s next? Here are some documentation resources to get you started.
+This repository now includes a production-style notification module and scheduler that you can deploy and test in any org.
 
-## How Do You Plan to Deploy Your Changes?
+## Added Use Cases
 
-Do you want to deploy a set of changes, or create a self-contained application? Choose a [development model](https://developer.salesforce.com/tools/vscode/en/user-guide/development-models).
+- `NotificationService`
+  - Validates email payloads
+  - Normalizes and deduplicates recipient addresses
+  - Splits large recipient lists into chunks of 100 per email
+  - Supports single-request and bulk-request email sends
+  - Exposes an `@AuraEnabled` method for UI-triggered sends
+- `NotificationDigestScheduler`
+  - Schedulable Apex job for daily task-digest notifications
+  - Sends a digest email only when open tasks are due today or earlier
 
-## Configure Your Salesforce DX Project
+## Apex Classes Added/Updated
 
-The `sfdx-project.json` file contains useful configuration information for your project. See [Salesforce DX Project Configuration](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_ws_config.htm) in the _Salesforce DX Developer Guide_ for details about this file.
+- `force-app/main/default/classes/NotificationService.cls`
+- `force-app/main/default/classes/NotificationServiceTest.cls`
+- `force-app/main/default/classes/NotificationDigestScheduler.cls`
+- `force-app/main/default/classes/NotificationDigestSchedulerTest.cls`
 
-## Read All About It
+## Deploy and Test
 
-- [Salesforce Extensions Documentation](https://developer.salesforce.com/tools/vscode/)
-- [Salesforce CLI Setup Guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_setup.meta/sfdx_setup/sfdx_setup_intro.htm)
-- [Salesforce DX Developer Guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_intro.htm)
-- [Salesforce CLI Command Reference](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_reference.meta/sfdx_cli_reference/cli_reference.htm)
-#
+### Validate deployment
+
+```bash
+sf project deploy start --source-dir force-app --dry-run --wait 20
+```
+
+### Deploy with local tests
+
+```bash
+sf project deploy start --source-dir force-app --test-level RunLocalTests --wait 30
+```
+
+### Run only notification-related tests
+
+```bash
+sf apex run test --tests NotificationServiceTest,NotificationDigestSchedulerTest --result-format human --wait 20
+```
+
+## Notes
+
+- Jenkins quality gates for ESLint/RetireJS are expected to pass with current changes.
+- PMD warnings may still exist in legacy sample classes and can be addressed separately if you want stricter gates.
