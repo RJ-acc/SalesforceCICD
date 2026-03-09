@@ -43,8 +43,8 @@ public with sharing class NotificationService {
             List<String> recipients = normalizeRecipients(request.toAddresses);
             for (Integer start = 0; start < recipients.size(); start += MAX_RECIPIENTS_PER_EMAIL) {
                 List<String> chunk = new List<String>();
-                Integer end = Math.min(start + MAX_RECIPIENTS_PER_EMAIL, recipients.size());
-                for (Integer idx = start; idx < end; idx++) {
+                Integer endIndex = Math.min(start + MAX_RECIPIENTS_PER_EMAIL, recipients.size());
+                for (Integer idx = start; idx < endIndex; idx++) {
                     chunk.add(recipients[idx]);
                 }
 

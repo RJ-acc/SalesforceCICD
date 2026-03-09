@@ -42,7 +42,7 @@ public class NotificationDigestSchedulerTest {
         String jobId = System.schedule('NotificationDigestSchedulerJob', '0 0 6 * * ?', new NotificationDigestScheduler());
         Test.stopTest();
 
-        CronTrigger trigger = [SELECT Id FROM CronTrigger WHERE Id = :jobId LIMIT 1];
-        System.assertNotEquals(null, trigger);
+        CronTrigger jobTrigger = [SELECT Id FROM CronTrigger WHERE Id = :jobId LIMIT 1];
+        System.assertNotEquals(null, jobTrigger);
     }
 }
