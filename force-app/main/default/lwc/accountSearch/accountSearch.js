@@ -1,8 +1,8 @@
 import { LightningElement } from 'lwc';
 import searchAccounts from '@salesforce/apex/AccountService.searchAccounts';
 
-const MIN_SEARCH_CHARS = 2;
-const ZERO = 0;
+const MIN_SEARCH_CHARS = 2,
+    ZERO = 0;
 
 export default class AccountSearch extends LightningElement {
     searchKey = '';

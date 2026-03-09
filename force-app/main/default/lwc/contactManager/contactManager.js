@@ -28,8 +28,8 @@ export default class ContactManager extends LightningElement {
     }
 
     handleInputChange(event) {
-        const { field } = event.target.dataset;
-        const { value } = event.target;
+        const { field } = event.target.dataset,
+            { value } = event.target;
         if (field === 'firstName') {
             this.firstName = value;
         }
