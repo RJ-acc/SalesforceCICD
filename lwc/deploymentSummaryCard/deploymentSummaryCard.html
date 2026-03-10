@@ -1,0 +1,11 @@
+<template>
+    <lightning-card title={cardTitle} icon-name="utility:summary">
+        <div class="slds-p-around_medium">
+            <p class="slds-text-title_caps slds-m-bottom_x-small">Deployment Snapshot</p>
+            <p>Total Components: {totalComponents}</p>
+            <p>Passed Checks: {passedChecks}</p>
+            <p>Failed Checks: {failedChecks}</p>
+            <p class="slds-m-top_small"><strong>{statusText}</strong></p>
+        </div>
+    </lightning-card>
+</template>
