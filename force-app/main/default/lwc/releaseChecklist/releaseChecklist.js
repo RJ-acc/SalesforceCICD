@@ -1,4 +1,4 @@
-import { api, LightningElement } from 'lwc';
+import { LightningElement, api } from 'lwc';
 
 const COMPLETE_STATUS = 'Done',
     PENDING_STATUS = 'Pending';

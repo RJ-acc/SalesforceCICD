@@ -1,8 +1,8 @@
-import { api, LightningElement } from 'lwc';
+import { LightningElement, api } from 'lwc';
 
 const ZERO = 0,
-    READY_STATUS = 'Status: Ready for Deployment',
-    ACTION_REQUIRED_STATUS = 'Status: Action Required';
+    ACTION_REQUIRED_STATUS = 'Status: Action Required',
+    READY_STATUS = 'Status: Ready for Deployment';
 
 export default class DeploymentSummaryCard extends LightningElement {
     @api cardTitle = 'Deployment Summary';
