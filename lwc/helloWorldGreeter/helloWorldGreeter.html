@@ -1,0 +1,32 @@
+<template>
+    <lightning-card title="Hello World Greeter" icon-name="standard:bot">
+        <div class="slds-p-around_medium">
+            <lightning-input
+                label="Enter Your Name"
+                value={name}
+                onchange={handleNameChange}
+                placeholder="e.g. Ravi">
+            </lightning-input>
+
+            <div class="slds-m-top_medium">
+                <lightning-button
+                    label="Say Hello"
+                    variant="brand"
+                    onclick={handleGreet}>
+                </lightning-button>
+            </div>
+
+            <template if:true={greeting}>
+                <div class="slds-m-top_medium slds-box slds-theme_success">
+                    <p class="slds-text-heading_small">{greeting}</p>
+                </div>
+            </template>
+
+            <template if:true={error}>
+                <div class="slds-m-top_medium slds-box slds-theme_error">
+                    <p>{error}</p>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>
