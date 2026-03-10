@@ -1,6 +1,8 @@
 import { api, LightningElement } from 'lwc';
 
-const ZERO = 0;
+const ZERO = 0,
+    READY_STATUS = 'Status: Ready for Deployment',
+    ACTION_REQUIRED_STATUS = 'Status: Action Required';
 
 export default class DeploymentSummaryCard extends LightningElement {
     @api cardTitle = 'Deployment Summary';
@@ -10,8 +12,8 @@ export default class DeploymentSummaryCard extends LightningElement {
 
     get statusText() {
         if (this.failedChecks > ZERO) {
-            return 'Status: Action Required';
+            return ACTION_REQUIRED_STATUS;
         }
-        return 'Status: Ready for Deployment';
+        return READY_STATUS;
     }
 }
