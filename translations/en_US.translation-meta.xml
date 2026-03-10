@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Translations xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customLabels>
+        <label><!-- Deployment health message --></label>
+        <name>DeploymentHealthMessage</name>
+    </customLabels>
     <quickActions>
         <label><!-- LogACall --></label>
         <name>LogACall</name>
