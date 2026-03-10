@@ -1,0 +1,15 @@
+<template>
+    <lightning-card title={title} icon-name="utility:check">
+        <div class="slds-p-around_medium">
+            <p class="slds-text-title_caps slds-m-bottom_x-small">Checklist Progress</p>
+            <p>{completionLabel}</p>
+            <ul class="slds-m-top_small">
+                <template for:each={items} for:item="item">
+                    <li key={item.id} class="slds-m-bottom_x-small">
+                        {item.name} - {item.status}
+                    </li>
+                </template>
+            </ul>
+        </div>
+    </lightning-card>
+</template>
