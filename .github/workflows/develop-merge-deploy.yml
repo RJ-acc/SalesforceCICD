@@ -60,13 +60,31 @@ jobs:
       - name: Install Salesforce CLI
         run: npm install --global @salesforce/cli
 
+      - name: Allowlist unsigned plugins
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.config/sf"
+          cat > "$HOME/.config/sf/unsignedPluginAllowList.json" <<'EOF'
+          [
+            "sfdx-git-delta"
+          ]
+          EOF
+
       - name: Install Salesforce plugins
         shell: bash
         run: |
           sf --version
           sf plugins install code-analyzer
-          yes | sf plugins install sfdx-git-delta || true
+          sf plugins install sfdx-git-delta
           sf plugins
+
+      #- name: Install Salesforce plugins
+      #  shell: bash
+      #  run: |
+      #   sf --version
+      #   sf plugins install code-analyzer
+      #   yes | sf plugins install sfdx-git-delta || true
+      #    sf plugins
 
       # ==========================================
       # STAGE 3: AUTHENTICATE
