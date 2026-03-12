@@ -1,0 +1,266 @@
+name: Salesforce DEV CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      feature_branch:
+        description: "Feature branch name (example: feature/my-story)"
+        required: true
+        type: string
+
+  # Uncomment if you also want automatic runs on feature branches.
+  # push:
+  #   branches:
+  #     - "feature/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: salesforce-dev-${{ github.event.inputs.feature_branch || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  SF_LOGIN_URL: https://login.salesforce.com
+  MIN_CODE_COVERAGE: "75"
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.feature_branch || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Salesforce CLI
+        run: npm install --global @salesforce/cli
+
+      - name: Install Code Analyzer plugin
+        run: |
+          sf --version
+          sf plugins install code-analyzer
+          sf plugins
+
+      # ==========================================
+      # PMD - Apex Static Analysis
+      # ==========================================
+      - name: PMD - Apex Static Analysis
+        id: pmd
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports
+          sf code-analyzer run \
+            --workspace . \
+            --target "force-app/main/default/classes/*.cls" \
+            --rule-selector pmd \
+            --severity-threshold 1 \
+            --view detail \
+            --output-file reports/pmd-report.html
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "PMD exit code: $exit_code"
+          exit 0
+
+      # ==========================================
+      # ESLint - LWC Linting
+      # ==========================================
+      - name: ESLint - LWC Linting (HTML)
+        id: eslint_html
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports
+          sf code-analyzer run \
+            --workspace . \
+            --target "force-app/main/default/lwc/**/*.js" \
+            --rule-selector eslint \
+            --severity-threshold 1 \
+            --view detail \
+            --output-file reports/eslint-report.html
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "ESLint HTML exit code: $exit_code"
+          exit 0
+
+      - name: ESLint - LWC Linting (JSON)
+        id: eslint_json
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports
+          sf code-analyzer run \
+            --workspace . \
+            --target "force-app/main/default/lwc/**/*.js" \
+            --rule-selector eslint \
+            --severity-threshold 1 \
+            --output-file reports/eslint-report.json
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "ESLint JSON exit code: $exit_code"
+          exit 0
+
+      - name: Compute final ESLint status
+        id: eslint
+        shell: bash
+        run: |
+          if [[ "${{ steps.eslint_html.outputs.exit_code }}" != "0" || "${{ steps.eslint_json.outputs.exit_code }}" != "0" ]]; then
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ==========================================
+      # RetireJS - Security Scan
+      # ==========================================
+      - name: RetireJS - Security Scan
+        id: retire
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports
+          sf code-analyzer run \
+            --workspace . \
+            --target "force-app/main/default/lwc/**/*" \
+            --rule-selector retire-js \
+            --severity-threshold 1 \
+            --view detail \
+            --output-file reports/security-report.html
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "RetireJS exit code: $exit_code"
+          exit 0
+
+      - name: Upload scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-reports
+          path: |
+            reports/pmd-report.html
+            reports/eslint-report.html
+            reports/eslint-report.json
+            reports/security-report.html
+          if-no-files-found: warn
+          retention-days: 7
+
+      # ==========================================
+      # QUALITY GATE
+      # ==========================================
+      - name: Quality Gate
+        if: always()
+        shell: bash
+        run: |
+          echo "Scan summary -> PMD: ${{ steps.pmd.outputs.exit_code }}, ESLint: ${{ steps.eslint.outputs.exit_code }}, RetireJS: ${{ steps.retire.outputs.exit_code }}"
+          if [[ "${{ steps.pmd.outputs.exit_code }}" != "0" || "${{ steps.eslint.outputs.exit_code }}" != "0" || "${{ steps.retire.outputs.exit_code }}" != "0" ]]; then
+            echo "Quality gate failed. Check uploaded artifacts."
+            exit 1
+          fi
+          echo "All scans passed. Proceeding to deployment."
+
+      # ==========================================
+      # AUTHENTICATE DEV ORG
+      # ==========================================
+      - name: Create JWT key file
+        shell: bash
+        run: |
+          printf '%s' "${{ secrets.SF_JWT_KEY }}" > server.key
+          chmod 600 server.key
+
+      - name: Authenticate DEV Org
+        run: |
+          sf org login jwt \
+            --client-id "${{ secrets.SF_CONSUMER_KEY }}" \
+            --jwt-key-file server.key \
+            --username "${{ secrets.SF_USERNAME }}" \
+            --instance-url "${{ env.SF_LOGIN_URL }}" \
+            --set-default
+
+      # ==========================================
+      # VALIDATE (dry-run + tests + coverage)
+      # ==========================================
+      - name: Validate Deployment
+        run: |
+          mkdir -p test-results
+          sf project deploy start \
+            --source-dir force-app \
+            --dry-run \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --coverage-formatters json \
+            --results-dir test-results \
+            --verbose
+
+      - name: Show coverage output
+        if: always()
+        shell: bash
+        run: |
+          echo "Minimum required coverage: ${MIN_CODE_COVERAGE}%"
+          ls -R test-results || true
+          cat test-results/*coverage*.json 2>/dev/null || echo "Coverage report not found"
+
+      - name: Upload validation test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-test-results
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 7
+
+      # ==========================================
+      # DEPLOY (full) + TESTS
+      # ==========================================
+      - name: Deploy to DEV with Tests
+        run: |
+          rm -rf test-results
+          mkdir -p test-results
+          sf project deploy start \
+            --source-dir force-app \
+            --test-level RunLocalTests \
+            --wait 10 \
+            --coverage-formatters json \
+            --results-dir test-results
+
+      - name: Upload deploy test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-test-results
+          path: test-results
+          if-no-files-found: warn
+          retention-days: 7
+
+      # ==========================================
+      # DESTRUCTIVE CHANGES (if any)
+      # ==========================================
+      - name: Deploy Destructive Changes
+        if: ${{ hashFiles('destructive-changes/destructiveChanges.xml') != '' }}
+        run: |
+          sf project deploy start \
+            --metadata-dir destructive-changes \
+            --wait 10 \
+            --ignore-warnings
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: rm -f server.key
