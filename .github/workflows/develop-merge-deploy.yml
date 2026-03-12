@@ -1,0 +1,453 @@
+name: Develop -> MERGE Deploy
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: merge-deploy
+  cancel-in-progress: false
+
+env:
+  SF_LOGIN_URL: https://login.salesforce.com
+  MIN_CODE_COVERAGE: "75"
+  TARGET_ALIAS: MERGE
+  BACKUP_BRANCH: develop-backup
+  DEPLOY_TAG: merge-last-success
+
+jobs:
+  merge-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # ==========================================
+      # STAGE 1: CHECKOUT
+      # ==========================================
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Capture git metadata
+        shell: bash
+        run: |
+          echo "GIT_COMMIT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "GIT_BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)" >> "$GITHUB_ENV"
+          echo "Checked out commit: $(git rev-parse HEAD)"
+          echo "Checked out branch: $(git rev-parse --abbrev-ref HEAD)"
+
+      # ==========================================
+      # STAGE 2: INSTALL TOOLS
+      # ==========================================
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Salesforce CLI
+        run: npm install --global @salesforce/cli
+
+      - name: Install Salesforce plugins
+        shell: bash
+        run: |
+          sf --version
+          sf plugins install code-analyzer
+          yes | sf plugins install sfdx-git-delta || true
+          sf plugins
+
+      # ==========================================
+      # STAGE 3: AUTHENTICATE
+      # ==========================================
+      - name: Create JWT key file
+        shell: bash
+        run: |
+          printf '%s' "${{ secrets.SF_JWT_KEY_MERGE }}" > server.key
+          chmod 600 server.key
+
+      - name: Authenticate MERGE Org
+        run: |
+          sf org login jwt \
+            --client-id "${{ secrets.SF_CONSUMER_KEY_MERGE }}" \
+            --jwt-key-file server.key \
+            --username "${{ secrets.SF_USERNAME_MERGE }}" \
+            --instance-url "${{ env.SF_LOGIN_URL }}" \
+            --alias "${{ env.TARGET_ALIAS }}" \
+            --set-default
+
+      # ==========================================
+      # STAGE 4: BACKUP CURRENT ORG STATE
+      # ==========================================
+      - name: Backup MERGE Org
+        shell: bash
+        run: |
+          rm -rf org-backup-src org-backup-manifest
+          mkdir -p org-backup-src org-backup-manifest
+
+          if sf project generate manifest --from-org "${TARGET_ALIAS}" -d org-backup-manifest; then
+            echo "Generated backup manifest from org."
+            BACKUP_MANIFEST="org-backup-manifest/package.xml"
+          else
+            echo "Manifest generation from org failed. Falling back to manifest/package.xml"
+            cp manifest/package.xml org-backup-manifest/package.xml
+            BACKUP_MANIFEST="org-backup-manifest/package.xml"
+          fi
+
+          sf project retrieve start \
+            --target-org "${TARGET_ALIAS}" \
+            --manifest "${BACKUP_MANIFEST}" \
+            --output-dir org-backup-src \
+            --wait 30
+
+      # ==========================================
+      # STAGE 5: PUBLISH BACKUP SNAPSHOT
+      # ==========================================
+      - name: Publish Backup Snapshot
+        shell: bash
+        run: |
+          rm -rf backup-repo
+
+          git clone "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" backup-repo
+          cd backup-repo
+
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+          if git ls-remote --exit-code --heads origin "${BACKUP_BRANCH}" >/dev/null 2>&1; then
+            git fetch origin "${BACKUP_BRANCH}"
+            git checkout -B "${BACKUP_BRANCH}" "origin/${BACKUP_BRANCH}"
+          else
+            git checkout --orphan "${BACKUP_BRANCH}"
+          fi
+
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+
+          cp -R "${GITHUB_WORKSPACE}/org-backup-src/." .
+
+          git add -A
+          git commit -m "MERGE org backup before deploy - run #${GITHUB_RUN_NUMBER} - $(date +%Y-%m-%d_%H:%M:%S)" || echo "No backup changes to commit"
+          git push origin "${BACKUP_BRANCH}" --force
+
+      # ==========================================
+      # STAGE 6: RESOLVE DELTA BASE
+      # ==========================================
+      - name: Resolve Delta Base
+        id: resolve_base
+        shell: bash
+        run: |
+          git fetch --prune --tags origin >/dev/null 2>&1 || true
+
+          if git rev-parse -q --verify "refs/tags/${DEPLOY_TAG}" >/dev/null 2>&1; then
+            LAST_DEPLOYED_SHA="$(git rev-parse "refs/tags/${DEPLOY_TAG}")"
+            echo "last_deployed_sha=${LAST_DEPLOYED_SHA}" >> "$GITHUB_OUTPUT"
+            echo "deploy_mode=DELTA" >> "$GITHUB_OUTPUT"
+            echo "Using last successful deploy tag ${DEPLOY_TAG} -> ${LAST_DEPLOYED_SHA}"
+          else
+            echo "last_deployed_sha=" >> "$GITHUB_OUTPUT"
+            echo "deploy_mode=FULL" >> "$GITHUB_OUTPUT"
+            echo "No previous successful deploy tag found. Full deployment will run."
+          fi
+
+      # ==========================================
+      # STAGE 7: GENERATE DELTA PACKAGE
+      # ==========================================
+      - name: Generate Delta Package
+        id: generate_delta
+        if: ${{ steps.resolve_base.outputs.deploy_mode == 'DELTA' }}
+        shell: bash
+        run: |
+          rm -rf delta-output
+          mkdir -p delta-output
+
+          sf sgd source delta \
+            --from "${{ steps.resolve_base.outputs.last_deployed_sha }}" \
+            --to "HEAD" \
+            --generate-delta \
+            --output-dir "delta-output" \
+            --repo-dir "."
+
+          if [ -f delta-output/package/package.xml ] && grep -q "<types>" delta-output/package/package.xml; then
+            echo "has_additive_delta=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_additive_delta=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -f delta-output/destructiveChanges/destructiveChanges.xml ] && grep -q "<types>" delta-output/destructiveChanges/destructiveChanges.xml; then
+            echo "has_destructive_delta=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_destructive_delta=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "=== Generated package.xml ==="
+          cat delta-output/package/package.xml 2>/dev/null || true
+          echo "=== Generated destructiveChanges.xml ==="
+          cat delta-output/destructiveChanges/destructiveChanges.xml 2>/dev/null || true
+
+      # ==========================================
+      # STAGE 8: STATIC CODE ANALYSIS
+      # ==========================================
+      - name: PMD - Apex Static Analysis
+        id: pmd
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports
+          sf code-analyzer run \
+            --workspace . \
+            --target "force-app/main/default/classes/*.cls" \
+            --rule-selector pmd \
+            --severity-threshold 2 \
+            --view detail \
+            --output-file reports/pmd-report.html
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "PMD exit code: $exit_code"
+          exit 0
+
+      - name: ESLint - LWC Linting (HTML)
+        id: eslint_html
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports
+          sf code-analyzer run \
+            --workspace . \
+            --target "force-app/main/default/lwc/**/*.js" \
+            --rule-selector eslint \
+            --severity-threshold 2 \
+            --view detail \
+            --output-file reports/eslint-report.html
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "ESLint HTML exit code: $exit_code"
+          exit 0
+
+      - name: ESLint - LWC Linting (JSON)
+        id: eslint_json
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports
+          sf code-analyzer run \
+            --workspace . \
+            --target "force-app/main/default/lwc/**/*.js" \
+            --rule-selector eslint \
+            --severity-threshold 2 \
+            --output-file reports/eslint-report.json
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "ESLint JSON exit code: $exit_code"
+          exit 0
+
+      - name: Compute final ESLint status
+        id: eslint
+        shell: bash
+        run: |
+          if [[ "${{ steps.eslint_html.outputs.exit_code }}" != "0" || "${{ steps.eslint_json.outputs.exit_code }}" != "0" ]]; then
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Final ESLint status: ${{ steps.eslint.outputs.exit_code }}"
+
+      - name: RetireJS - Security Scan
+        id: retire
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports
+          sf code-analyzer run \
+            --workspace . \
+            --target "force-app/main/default/lwc/**/*" \
+            --rule-selector retire-js \
+            --severity-threshold 2 \
+            --view detail \
+            --output-file reports/security-report.html
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          echo "RetireJS exit code: $exit_code"
+          exit 0
+
+      - name: Upload scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merge-scan-reports
+          path: |
+            reports/pmd-report.html
+            reports/eslint-report.html
+            reports/eslint-report.json
+            reports/security-report.html
+          if-no-files-found: warn
+          retention-days: 7
+
+      # ==========================================
+      # STAGE 9: QUALITY GATE
+      # ==========================================
+      - name: Quality Gate
+        if: always()
+        shell: bash
+        run: |
+          echo "Scan summary -> PMD: ${{ steps.pmd.outputs.exit_code }}, ESLint: ${{ steps.eslint.outputs.exit_code }}, RetireJS: ${{ steps.retire.outputs.exit_code }}"
+          if [[ "${{ steps.pmd.outputs.exit_code }}" != "0" || "${{ steps.eslint.outputs.exit_code }}" != "0" || "${{ steps.retire.outputs.exit_code }}" != "0" ]]; then
+            echo "MERGE Quality Gate FAILED. All severity 2+ violations must be fixed before deployment."
+            exit 1
+          fi
+          echo "All scans passed. Proceeding to deployment."
+
+      # ==========================================
+      # STAGE 10: VALIDATE DEPLOYMENT
+      # ==========================================
+      - name: Validate Deployment
+        shell: bash
+        env:
+          DEPLOY_MODE: ${{ steps.resolve_base.outputs.deploy_mode }}
+          HAS_ADDITIVE_DELTA: ${{ steps.generate_delta.outputs.has_additive_delta }}
+        run: |
+          if [ "${DEPLOY_MODE}" = "FULL" ]; then
+            echo "Validating full deployment..."
+            sf project deploy start \
+              --source-dir force-app \
+              --dry-run \
+              --test-level RunLocalTests \
+              --wait 30
+
+          elif [ "${HAS_ADDITIVE_DELTA}" = "true" ]; then
+            echo "Validating additive delta deployment..."
+            sf project deploy start \
+              --manifest delta-output/package/package.xml \
+              --dry-run \
+              --test-level RunLocalTests \
+              --wait 30
+
+          else
+            echo "No additive delta to validate."
+          fi
+
+      # ==========================================
+      # STAGE 11: VALIDATE DESTRUCTIVE CHANGES
+      # ==========================================
+      - name: Validate Destructive Changes
+        if: ${{ steps.resolve_base.outputs.deploy_mode == 'DELTA' && steps.generate_delta.outputs.has_destructive_delta == 'true' }}
+        shell: bash
+        run: |
+          echo "Validating destructive changes..."
+          sf project deploy start \
+            --pre-destructive-changes delta-output/destructiveChanges/destructiveChanges.xml \
+            --manifest delta-output/destructiveChanges/package.xml \
+            --ignore-warnings \
+            --dry-run \
+            --wait 30
+
+      # ==========================================
+      # STAGE 12: DEPLOY
+      # ==========================================
+      - name: Deploy to MERGE
+        shell: bash
+        env:
+          DEPLOY_MODE: ${{ steps.resolve_base.outputs.deploy_mode }}
+          HAS_ADDITIVE_DELTA: ${{ steps.generate_delta.outputs.has_additive_delta }}
+        run: |
+          mkdir -p test-results
+
+          if [ "${DEPLOY_MODE}" = "FULL" ]; then
+            echo "Running full deploy..."
+            sf project deploy start \
+              --source-dir force-app \
+              --test-level RunLocalTests \
+              --wait 30 \
+              --coverage-formatters json \
+              --results-dir test-results
+
+          elif [ "${HAS_ADDITIVE_DELTA}" = "true" ]; then
+            echo "Running delta deploy..."
+            sf project deploy start \
+              --manifest delta-output/package/package.xml \
+              --test-level RunLocalTests \
+              --wait 30 \
+              --coverage-formatters json \
+              --results-dir test-results
+
+          else
+            echo "No additive delta to deploy."
+          fi
+
+      # ==========================================
+      # STAGE 13: DEPLOY DESTRUCTIVE CHANGES
+      # ==========================================
+      - name: Deploy Destructive Changes
+        if: ${{ steps.resolve_base.outputs.deploy_mode == 'DELTA' && steps.generate_delta.outputs.has_destructive_delta == 'true' }}
+        shell: bash
+        run: |
+          echo "Deploying destructive changes..."
+          sf project deploy start \
+            --pre-destructive-changes delta-output/destructiveChanges/destructiveChanges.xml \
+            --manifest delta-output/destructiveChanges/package.xml \
+            --ignore-warnings \
+            --wait 30
+
+      # ==========================================
+      # STAGE 14: CODE COVERAGE CHECK
+      # ==========================================
+      - name: Code Coverage Check
+        if: always()
+        shell: bash
+        run: |
+          sf apex run test \
+            --test-level RunLocalTests \
+            --wait 30 \
+            --result-format json \
+            --code-coverage \
+            --output-dir test-results || true
+
+          echo "Code coverage results archived in test-results/"
+          echo "Minimum required target: ${MIN_CODE_COVERAGE}%"
+          echo "Note: add JSON parsing here if you want hard enforcement."
+
+      - name: Upload deployment artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merge-deploy-artifacts
+          path: |
+            test-results
+            delta-output
+            org-backup-src
+            org-backup-manifest
+            reports
+          if-no-files-found: warn
+          retention-days: 7
+
+      # ==========================================
+      # POST SUCCESS: UPDATE LAST SUCCESS TAG
+      # ==========================================
+      - name: Update last successful deploy tag
+        if: success()
+        shell: bash
+        run: |
+          echo "Commit for tag update: ${GIT_COMMIT_SHA}"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git fetch --tags origin
+          git tag -f "${DEPLOY_TAG}" "${GIT_COMMIT_SHA}"
+          git push origin "refs/tags/${DEPLOY_TAG}" --force
+
+      - name: Cleanup sensitive files
+        if: always()
+        run: rm -f server.key
