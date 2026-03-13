@@ -1,7 +1,7 @@
 public with sharing class ContactManager {
     @AuraEnabled(cacheable=true)
     public static List<Contact> getContacts() {
-        return [SELECT Id, FirstName, LastName, Email, Phone FROM Contact LIMIT 10];
+        return [SELECT Id, FirstName, LastName, Email, Phone FROM Contact WITH USER_MODE LIMIT 10];
     }
 
     @AuraEnabled
@@ -12,13 +12,13 @@ public with sharing class ContactManager {
             Email = email,
             Phone = phone
         );
-        insert c;
+        Database.insert(c, AccessLevel.USER_MODE);
         return c;
     }
 
     @AuraEnabled
     public static void deleteContact(Id contactId) {
-        Contact c = [SELECT Id FROM Contact WHERE Id = :contactId LIMIT 1];
-        delete c;
+        Contact c = [SELECT Id FROM Contact WHERE Id = :contactId WITH USER_MODE LIMIT 1];
+        Database.delete(c, AccessLevel.USER_MODE);
     }
 }

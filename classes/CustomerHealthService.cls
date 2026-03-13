@@ -20,6 +20,7 @@ public with sharing class CustomerHealthService {
             SELECT Id, Name
             FROM Account
             WHERE Id = :accountId
+            WITH USER_MODE
             LIMIT 1
         ];
 
@@ -28,6 +29,7 @@ public with sharing class CustomerHealthService {
             FROM Case
             WHERE AccountId = :accountId
                 AND IsClosed = false
+            WITH USER_MODE
         ];
 
         List<AggregateResult> openOpportunityStats = [
@@ -35,6 +37,7 @@ public with sharing class CustomerHealthService {
             FROM Opportunity
             WHERE AccountId = :accountId
                 AND IsClosed = false
+            WITH USER_MODE
         ];
 
         Integer openOpportunityCount = 0;
@@ -52,6 +55,7 @@ public with sharing class CustomerHealthService {
             WHERE WhatId = :accountId
                 AND IsClosed = false
                 AND ActivityDate <= :Date.today()
+            WITH USER_MODE
         ];
 
         Integer healthScore = calculateHealthScore(openCaseCount, openOpportunityCount, dueTaskCount, openPipelineAmount);

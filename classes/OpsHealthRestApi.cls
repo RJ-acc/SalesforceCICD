@@ -11,14 +11,15 @@ global with sharing class OpsHealthRestApi {
     @HttpGet
     global static void getHealth() {
         HealthPayload payload = new HealthPayload();
-        payload.openTasks = [SELECT COUNT() FROM Task WHERE IsClosed = false];
-        payload.openCases = [SELECT COUNT() FROM Case WHERE IsClosed = false];
-        payload.openOpportunities = [SELECT COUNT() FROM Opportunity WHERE IsClosed = false];
+        payload.openTasks = [SELECT COUNT() FROM Task WHERE IsClosed = false WITH USER_MODE];
+        payload.openCases = [SELECT COUNT() FROM Case WHERE IsClosed = false WITH USER_MODE];
+        payload.openOpportunities = [SELECT COUNT() FROM Opportunity WHERE IsClosed = false WITH USER_MODE];
 
         List<AggregateResult> pipeline = [
             SELECT SUM(Amount) totalAmount
             FROM Opportunity
             WHERE IsClosed = false
+            WITH USER_MODE
         ];
         payload.openPipelineAmount =
             (pipeline.isEmpty() || pipeline[0].get('totalAmount') == null)

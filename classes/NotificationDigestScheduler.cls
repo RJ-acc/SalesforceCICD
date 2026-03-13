@@ -22,6 +22,7 @@ public with sharing class NotificationDigestScheduler implements Schedulable {
             WHERE OwnerId = :userId
                 AND IsClosed = false
                 AND ActivityDate <= TODAY
+            WITH USER_MODE
         ];
 
         if (openDueTaskCount == 0) {
