@@ -16,18 +16,21 @@ public with sharing class SalesMetricsController {
             SELECT COUNT()
             FROM Lead
             WHERE CreatedDate >= :lastWeek
+            WITH USER_MODE
         ]);
 
         snapshot.put('openOpportunities', [
             SELECT COUNT()
             FROM Opportunity
             WHERE IsClosed = false
+            WITH USER_MODE
         ]);
 
         snapshot.put('openCases', [
             SELECT COUNT()
             FROM Case
             WHERE IsClosed = false
+            WITH USER_MODE
         ]);
 
         snapshot.put('tasksDueToday', [
@@ -35,12 +38,14 @@ public with sharing class SalesMetricsController {
             FROM Task
             WHERE IsClosed = false
                 AND ActivityDate = :Date.today()
+            WITH USER_MODE
         ]);
 
         List<AggregateResult> pipeline = [
             SELECT SUM(Amount) totalAmount
             FROM Opportunity
             WHERE IsClosed = false
+            WITH USER_MODE
         ];
 
         Decimal totalPipeline = 0;
@@ -61,6 +66,7 @@ public with sharing class SalesMetricsController {
             SELECT Id, Name, Amount, CloseDate, Account.Name
             FROM Opportunity
             WHERE IsClosed = false
+            WITH USER_MODE
             ORDER BY Amount DESC NULLS LAST
             LIMIT :safeLimit
         ];

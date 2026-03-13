@@ -125,6 +125,6 @@ public with sharing class NotificationService {
 
     @AuraEnabled(cacheable=true)
     public static Integer getUnreadNotificationCount() {
-        return [SELECT COUNT() FROM Task WHERE OwnerId = :UserInfo.getUserId() AND IsClosed = false AND ActivityDate <= TODAY];
+        return [SELECT COUNT() FROM Task WHERE OwnerId = :UserInfo.getUserId() AND IsClosed = false AND ActivityDate <= TODAY WITH USER_MODE];
     }
 }
