@@ -5425,10 +5425,6 @@
         <visibility>DefaultOn</visibility>
     </tabVisibilities>
     <tabVisibilities>
-        <tab>standard-DevopsActivityLog</tab>
-        <visibility>DefaultOn</visibility>
-    </tabVisibilities>
-    <tabVisibilities>
         <tab>standard-DevopsEnvironment</tab>
         <visibility>DefaultOn</visibility>
     </tabVisibilities>
