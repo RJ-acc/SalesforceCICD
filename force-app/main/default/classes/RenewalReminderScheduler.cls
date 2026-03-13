@@ -21,6 +21,7 @@ public with sharing class RenewalReminderScheduler implements Schedulable {
             FROM Opportunity
             WHERE IsClosed = false
                 AND CloseDate <= :closeByDate
+            WITH USER_MODE
             ORDER BY CloseDate ASC
             LIMIT :MAX_ITEMS_IN_DIGEST
         ];

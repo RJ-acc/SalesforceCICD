@@ -36,6 +36,7 @@ public with sharing class PipelineOpsService {
             FROM Task
             WHERE OwnerId IN :ownerIds
                 AND IsClosed = false
+            WITH USER_MODE
             GROUP BY OwnerId
         ]) {
             Id ownerId = (Id)ar.get('ownerId');
@@ -48,6 +49,7 @@ public with sharing class PipelineOpsService {
             WHERE OwnerId IN :ownerIds
                 AND IsClosed = false
                 AND ActivityDate < :Date.today()
+            WITH USER_MODE
             GROUP BY OwnerId
         ]) {
             Id ownerId = (Id)ar.get('ownerId');
@@ -59,6 +61,7 @@ public with sharing class PipelineOpsService {
             FROM Case
             WHERE OwnerId IN :ownerIds
                 AND IsClosed = false
+            WITH USER_MODE
             GROUP BY OwnerId
         ]) {
             Id ownerId = (Id)ar.get('ownerId');
@@ -70,6 +73,7 @@ public with sharing class PipelineOpsService {
             FROM Opportunity
             WHERE OwnerId IN :ownerIds
                 AND IsClosed = false
+            WITH USER_MODE
             GROUP BY OwnerId
         ]) {
             Id ownerId = (Id)ar.get('ownerId');
@@ -101,6 +105,7 @@ public with sharing class PipelineOpsService {
             WHERE OwnerId = :fromOwnerId
                 AND IsClosed = false
                 AND ActivityDate <= :dueBeforeDate
+            WITH USER_MODE
             ORDER BY ActivityDate ASC
             LIMIT :safeLimit
         ];
@@ -112,7 +117,7 @@ public with sharing class PipelineOpsService {
         }
 
         if (!toMove.isEmpty()) {
-            update toMove;
+            Database.update(toMove, AccessLevel.USER_MODE);
         }
 
         ReassignResult result = new ReassignResult();

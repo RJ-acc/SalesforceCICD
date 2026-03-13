@@ -15,6 +15,7 @@ public with sharing class LeadQualificationService {
             SELECT Id, Email, Phone, Company, Title, AnnualRevenue, NumberOfEmployees, Rating
             FROM Lead
             WHERE Id IN :leadIds
+            WITH USER_MODE
         ];
 
         List<LeadQualificationResult> results = new List<LeadQualificationResult>();
@@ -33,7 +34,7 @@ public with sharing class LeadQualificationService {
         }
 
         if (!leads.isEmpty()) {
-            update leads;
+            Database.update(leads, AccessLevel.USER_MODE);
         }
         return results;
     }
