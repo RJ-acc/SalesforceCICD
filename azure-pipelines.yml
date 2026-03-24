@@ -7,7 +7,7 @@ trigger:
 - main
 
 pool:
-  vmImage: ubuntu-latest
+  name: 'self-hosted-salesforce'  
 
 steps:
 - script: echo Hello, world!
